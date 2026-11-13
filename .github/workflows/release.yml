@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test TcpRtt.slnx -c Release
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+
+          foreach ($rid in 'win-x64', 'win-x86') {
+            dotnet publish src/TcpRtt/TcpRtt.csproj `
+              -c Release `
+              -r $rid `
+              --self-contained `
+              -p:PublishSingleFile=true `
+              -p:Version=$version `
+              -o "publish/$rid"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+            Copy-Item "publish/$rid/TcpRtt.exe" "artifacts/TcpRtt-$version-$rid.exe"
+          }
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.exe
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
